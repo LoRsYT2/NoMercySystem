@@ -1,119 +1,35 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, AttachmentBuilder, SlashCommandBuilder, REST, Routes, PermissionsBitField } = require('discord.js');
-const Enmap = require('enmap').default || require('enmap');
+const { Client, GatewayIntentBits, AttachmentBuilder, SlashCommandBuilder, REST, Routes } = require('discord.js');
+const Enmap = require('enmap');
 const { createCanvas, loadImage } = require('canvas');
 const express = require('express');
-const app = express();
 
-app.get('/', (req, res) => res.send('Bot is active!'));
+const app = express();
+app.get('/', (req, res) => res.send('Bot is active'));
 app.listen(process.env.PORT || 3000);
 
-const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
-});
-
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 const levels = new Enmap({ name: "levels" });
-
-client.once('clientReady', async () => {
-    console.log(`[BOT] Logged in as ${client.user.tag}`);
-    const commands = [
-        new SlashCommandBuilder().setName('level').setDescription('View your profile card'),
-        new SlashCommandBuilder().setName('lb').setDescription('View Top 10 leaderboard'),
-        new SlashCommandBuilder().setName('reset').setDescription('Admin only')
-    ];
-    const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
-});
-
-client.on('messageCreate', async message => {
-    if (message.author.bot || !message.guild) return;
-    const xpChannels = { "1509335030982512751": 25, "1509335059302187110": 15 };
-    if (!xpChannels[message.channel.id]) return;
-
-    const key = `${message.guild.id}-${message.author.id}`;
-    levels.ensure(key, { xp: 0, level: 0, userId: message.author.id });
-    levels.math(key, "+", xpChannels[message.channel.id], "xp");
-    
-    let userData = levels.get(key);
-    let neededXp = 150 * Math.pow(2, userData.level);
-
-    if (userData.xp >= neededXp) {
-        levels.math(key, "+", 1, "level");
-        levels.set(key, 0, "xp");
-    }
-});
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-    const key = `${interaction.guild.id}-${interaction.user.id}`;
 
     if (interaction.commandName === 'level') {
         await interaction.deferReply();
-        const data = levels.ensure(key, { xp: 0, level: 0, userId: interaction.user.id });
-        const neededXp = 150 * Math.pow(2, data.level);
+        const key = `${interaction.guild.id}-${interaction.user.id}`;
+        const data = levels.ensure(key, { xp: 0, level: 0 });
         
-        const canvas = createCanvas(900, 250);
+        // رسم بسيط جداً للتأكد من ظهور شيء
+        const canvas = createCanvas(400, 100);
         const ctx = canvas.getContext('2d');
-        
-        // الخلفية
-        ctx.fillStyle = '#050505';
-        ctx.fillRect(0, 0, 900, 250);
-
-        // شريط التقدم
         ctx.fillStyle = '#222';
-        ctx.fillRect(200, 150, 600, 20);
-        const progress = Math.min((data.xp / neededXp) * 600, 600);
-        ctx.fillStyle = '#8a2be2';
-        ctx.fillRect(200, 150, progress, 20);
-
-        // النصوص (تم إصلاح ظهورها)
+        ctx.fillRect(0, 0, 400, 100);
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 35px Arial';
-        ctx.fillText(interaction.user.username, 200, 100);
         ctx.font = '20px Arial';
-        ctx.fillStyle = '#aaa';
-        ctx.fillText(`LVL: ${data.level} | XP: ${data.xp} / ${neededXp}`, 200, 135);
+        ctx.fillText(`User: ${interaction.user.username}`, 20, 40);
+        ctx.fillText(`Level: ${data.level}`, 20, 70);
 
-        // صورة البروفايل (مع حفظ الحالة لتجنب قص النصوص)
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(100, 125, 60, 0, Math.PI * 2);
-        ctx.clip();
-        try {
-            const avatar = await loadImage(interaction.user.displayAvatarURL({ extension: 'png' }));
-            ctx.drawImage(avatar, 40, 65, 120, 120);
-        } catch(e) {}
-        ctx.restore();
-
-        await interaction.editReply({ files: [new AttachmentBuilder(canvas.toBuffer(), { name: 'level.png' })] });
-    }
-
-    else if (interaction.commandName === 'lb') {
-        await interaction.deferReply();
-        const sorted = Array.from(levels.values()).sort((a, b) => b.level - a.level).slice(0, 10);
-        const canvas = createCanvas(800, 850);
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#050505';
-        ctx.fillRect(0, 0, 800, 850);
-        
-        ctx.fillStyle = '#fff';
-        ctx.font = 'bold 50px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText("TOP 10", 400, 70);
-
-        for (let i = 0; i < sorted.length; i++) {
-            const member = await interaction.guild.members.fetch(sorted[i].userId).catch(() => null);
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(50, 120 + (i * 70), 700, 50);
-            ctx.fillStyle = '#fff';
-            ctx.font = '22px Arial';
-            ctx.textAlign = 'left';
-            ctx.fillText(`${i + 1}. ${member?.user.username || "User"}`, 80, 155 + (i * 70));
-            ctx.textAlign = 'right';
-            ctx.fillStyle = '#8a2be2';
-            ctx.fillText(`LVL ${sorted[i].level}`, 730, 155 + (i * 70));
-        }
-        await interaction.editReply({ files: [new AttachmentBuilder(canvas.toBuffer(), { name: 'lb.png' })] });
+        await interaction.editReply({ files: [new AttachmentBuilder(canvas.toBuffer(), { name: 'test.png' })] });
     }
 });
 
