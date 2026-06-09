@@ -1,15 +1,15 @@
 {
-  "name": "nomercy-network-bot",
+  "name": "nomercy-bot",
   "version": "1.0.0",
-  "description": "Discord application management bot for NoMercy Network",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "canvas": "^3.2.3",
-    "discord.js": "^14.26.4",
-    "dotenv": "^16.4.5",
-    "enmap": "^6.1.6"
+    "discord.js": "^14.16.3",
+    "enmap": "^6.0.0",
+    "canvas": "^2.11.2",
+    "express": "^4.21.0",
+    "dotenv": "^16.4.5"
   }
 }
