@@ -1,26 +1,36 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, AttachmentBuilder, SlashCommandBuilder, REST, Routes, PermissionsBitField } = require('discord.js');
+const { 
+    Client, 
+    GatewayIntentBits, 
+    SlashCommandBuilder, 
+    REST, 
+    Routes, 
+    EmbedBuilder, 
+    ActionRowBuilder, 
+    ButtonBuilder, 
+    ButtonStyle 
+} = require('discord.js');
 const Enmap = require('enmap');
-const { createCanvas, loadImage } = require('canvas');
 const express = require('express');
 const app = express();
 
-app.get('/', (req, res) => res.send('Bot is active!'));
+// Keep-alive server for Render
+app.get('/', (req, res) => res.send('NoMercy Bot is Online!'));
 app.listen(process.env.PORT || 3000);
 
 const client = new Client({ 
     intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] 
 });
 
-// تعديل طريقة تعريف Enmap لتجاوز الخطأ
-const levels = new Enmap({ name: "levels" });
+// Enmap setup for persistence
+const levels = new (Enmap.default || Enmap)({ name: "levels" });
 
-client.once('clientReady', async () => {
-    console.log(`[BOT] Logged in as ${client.user.tag}`);
+client.once('ready', async () => {
+    console.log(`[SYSTEM] Logged in as ${client.user.tag}`);
     const commands = [
-        new SlashCommandBuilder().setName('level').setDescription('عرض بطاقة المستوى'),
-        new SlashCommandBuilder().setName('lb').setDescription('عرض التوب 10'),
-        new SlashCommandBuilder().setName('reset').setDescription('تصفير البيانات')
+        new SlashCommandBuilder().setName('profile').setDescription('View your level and rank card'),
+        new SlashCommandBuilder().setName('leaderboard').setDescription('View the top 10 ranked players'),
+        new SlashCommandBuilder().setName('reset').setDescription('Clear all levels (Admin only)')
     ];
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
     await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
@@ -28,6 +38,8 @@ client.once('clientReady', async () => {
 
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
+    
+    // XP Configuration
     const xpChannels = { "1509335030982512751": 15, "1509335059302187110": 5 };
     if (!xpChannels[message.channel.id]) return;
 
@@ -41,53 +53,46 @@ client.on('messageCreate', async message => {
     if (data.xp >= neededXp) {
         levels.math(key, "+", 1, "level");
         levels.set(key, 0, "xp");
+        message.channel.send(`🎉 Congratulations ${message.author}, you reached **Level ${data.level + 1}**!`);
     }
 });
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
+    const key = `${interaction.guild.id}-${interaction.user.id}`;
 
-    if (interaction.commandName === 'level') {
-        await interaction.deferReply();
-        const key = `${interaction.guild.id}-${interaction.user.id}`;
+    if (interaction.commandName === 'profile') {
         const data = levels.ensure(key, { xp: 0, level: 0, userId: interaction.user.id });
         const neededXp = 150 * Math.pow(2, data.level);
+        const progress = Math.round((data.xp / neededXp) * 10);
+        const bar = '▓'.repeat(progress) + '░'.repeat(10 - progress);
         
-        const canvas = createCanvas(900, 250);
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, 900, 250);
-        ctx.fillStyle = '#111'; ctx.fillRect(200, 150, 600, 20);
-        ctx.fillStyle = '#8a2be2'; ctx.fillRect(200, 150, Math.min((data.xp / neededXp) * 600, 600), 20);
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 35px Arial';
-        ctx.fillText(interaction.user.username, 200, 100);
-        
-        try {
-            const avatar = await loadImage(interaction.user.displayAvatarURL({ extension: 'png' }));
-            ctx.save(); ctx.beginPath(); ctx.arc(100, 125, 60, 0, Math.PI * 2); ctx.clip();
-            ctx.drawImage(avatar, 40, 65, 120, 120); ctx.restore();
-        } catch(e) {}
-        await interaction.editReply({ files: [new AttachmentBuilder(canvas.toBuffer(), { name: 'level.png' })] });
+        const embed = new EmbedBuilder()
+            .setColor(0x8A2BE2)
+            .setTitle(`📊 Profile: ${interaction.user.username}`)
+            .setThumbnail(interaction.user.displayAvatarURL())
+            .addFields(
+                { name: '⭐ Level', value: `\`${data.level}\``, inline: true },
+                { name: '✨ Experience', value: `\`${data.xp} / ${neededXp} XP\``, inline: true },
+                { name: 'Progress', value: `\`${bar}\` ${progress * 10}%`, inline: false }
+            )
+            .setTimestamp()
+            .setFooter({ text: 'NoMercy Network System' });
+            
+        await interaction.reply({ embeds: [embed] });
     }
 
-    else if (interaction.commandName === 'lb') {
-        await interaction.deferReply();
+    else if (interaction.commandName === 'leaderboard') {
         const sorted = Array.from(levels.values()).sort((a, b) => b.level - a.level).slice(0, 10);
-        const canvas = createCanvas(800, 850);
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#050505'; ctx.fillRect(0, 0, 800, 850);
-        ctx.fillStyle = '#fff'; ctx.font = 'bold 50px Arial';
-        ctx.textAlign = 'center'; ctx.fillText("TOP 10", 400, 80);
-
-        for (let i = 0; i < sorted.length; i++) {
-            const member = await interaction.guild.members.fetch(sorted[i].userId).catch(() => null);
-            ctx.fillStyle = '#1a1a2e'; ctx.fillRect(50, 130 + (i * 70), 700, 50);
-            ctx.fillStyle = i < 3 ? '#ffcc00' : '#fff';
-            ctx.font = 'bold 22px Arial'; ctx.textAlign = 'left';
-            ctx.fillText(`${i + 1}. ${member?.user.username || "User"}`, 80, 163 + (i * 70));
-            ctx.fillStyle = '#8a2be2'; ctx.textAlign = 'right';
-            ctx.fillText(`LVL ${sorted[i].level}`, 730, 163 + (i * 70));
-        }
-        await interaction.editReply({ files: [new AttachmentBuilder(canvas.toBuffer(), { name: 'lb.png' })] });
+        let list = sorted.map((u, i) => `**#${i + 1}** <@${u.userId}> - **LVL ${u.level}**`).join('\n');
+        
+        const embed = new EmbedBuilder()
+            .setColor(0x8A2BE2)
+            .setTitle("🥇 Global Leaderboard (Top 10)")
+            .setDescription(list || "No data available yet.")
+            .setTimestamp();
+            
+        await interaction.reply({ embeds: [embed] });
     }
 });
 
