@@ -15,17 +15,29 @@ const client = new Client({
 
 const levels = new (Enmap.default || Enmap)({ name: "levels" });
 
+// --- نظام تحديث الأوامر الاحترافي ---
 client.once('ready', async () => {
     console.log(`[SYSTEM] Logged in as ${client.user.tag}`);
+
     const commands = [
         new SlashCommandBuilder().setName('level').setDescription('View your current rank and XP'),
         new SlashCommandBuilder().setName('lb').setDescription('View the Top 10 players'),
         new SlashCommandBuilder().setName('reset').setDescription('Clear all server data')
     ];
+
     const rest = new REST({ version: '10' }).setToken(process.env.TOKEN);
-    await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commands });
+
+    try {
+        console.log('Started refreshing application (/) commands.');
+        // تحديث الأوامر لكل السيرفرات (Global)
+        await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
+        console.log('Successfully reloaded application (/) commands.');
+    } catch (error) {
+        console.error(error);
+    }
 });
 
+// --- باقي الكود كما هو ---
 client.on('messageCreate', async message => {
     if (message.author.bot || !message.guild) return;
     const xpChannels = { "1509335030982512751": 15, "1509335059302187110": 5 };
@@ -64,7 +76,7 @@ client.on('interactionCreate', async interaction => {
                 { name: '🔥 Current XP', value: `\`${data.xp} / ${neededXp}\``, inline: true },
                 { name: '📈 Progress Bar', value: `\`${bar}\` **${progress * 10}%**` }
             )
-            .setFooter({ text: 'NoMercy Network | Official System', iconURL: client.user.displayAvatarURL() })
+            .setFooter({ text: 'NoMercy Network | System Online' })
             .setTimestamp();
             
         await interaction.reply({ embeds: [embed] });
@@ -78,7 +90,6 @@ client.on('interactionCreate', async interaction => {
             .setColor(0x8A2BE2)
             .setTitle("🏆 NoMercy Global Leaderboard")
             .setDescription(list || "No players ranked yet.")
-            .setFooter({ text: 'Stay active to climb the ranks!' })
             .setTimestamp();
             
         await interaction.reply({ embeds: [embed] });
